@@ -29,7 +29,7 @@ func EmulateMsgSending(broker, topic string) {
 	scanner := bufio.NewScanner(file)
 	counter := 0
 	for scanner.Scan() {
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		counter++
 		line := scanner.Bytes()
 		err = writer.WriteMessages(context.Background(), kafka.Message{
