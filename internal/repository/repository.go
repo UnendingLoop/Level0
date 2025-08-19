@@ -68,22 +68,29 @@ func (OR *orderRepository) AddNewOrder(ctx context.Context, neworder *model.Orde
 	}
 
 	auxFunc := func() error {
-		//вспомогательная функция со всеми транзакциями
 		tx = OR.DB.WithContext(ctx).Begin()
-		if err := tx.Create(&neworder).Error; err != nil {
+
+		// Создаём заказ, если его ещё нет
+		if err := tx.FirstOrCreate(&neworder, model.Order{OrderUID: neworder.OrderUID}).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
+
+		// Delivery
 		neworder.Delivery.OrderUID = neworder.OrderUID
-		if err := tx.Create(&neworder.Delivery).Error; err != nil {
+		if err := tx.FirstOrCreate(&neworder.Delivery, model.Delivery{OrderUID: neworder.OrderUID}).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
+
+		// Payment
 		neworder.Payment.OrderUID = neworder.OrderUID
-		if err := tx.Create(&neworder.Payment).Error; err != nil {
+		if err := tx.FirstOrCreate(&neworder.Payment, model.Payment{OrderUID: neworder.OrderUID}).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
+
+		// Items — вставляем все новые элементы
 		for i := range neworder.Items {
 			neworder.Items[i].OrderUID = neworder.OrderUID
 		}
@@ -91,25 +98,27 @@ func (OR *orderRepository) AddNewOrder(ctx context.Context, neworder *model.Orde
 			tx.Rollback()
 			return err
 		}
+
 		if err := tx.Commit().Error; err != nil {
 			tx.Rollback()
 			return err
 		}
 		return nil
 	}
-	for range 3 { //ограничимся тройным циклом вместо рекурсивного вызова всей AddNewOrder
+
+	for range 3 {
 		err := auxFunc()
-		if err == nil { //если успешно - сразу выходим из цикла и функции
+		if err == nil {
 			return nil
 		}
 
 		if isConnectionError(err) {
 			switch OR.reconnecting.Load() {
-			case true: //если ошибка соединения и уже запущено переподключение - ждем и пробуем снова
+			case true:
 				time.Sleep(15 * time.Second)
 				continue
 			case false:
-				if conErr := OR.connectWithRetry(); conErr != nil { //если не получилось восстановить соединение с одной попытки - выход из функции
+				if conErr := OR.connectWithRetry(); conErr != nil {
 					return conErr
 				}
 				continue
