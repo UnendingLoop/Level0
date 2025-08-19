@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"testing"
 
 	"orderservice/internal/cache"
 	"orderservice/internal/model"
 
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/segmentio/kafka-go"
 	"gorm.io/gorm"
 )
@@ -34,7 +36,7 @@ func (f *fakeRepo) GetOrderByUID(ctx context.Context, uid string) (*model.Order,
 	}
 	return nil, gorm.ErrRecordNotFound
 }
-func (f *fakeRepo) GetAllOrders(ctx context.Context) ([]model.Order, error) {
+func (f *fakeRepo) GetAllOrders(ctx context.Context, count int) ([]model.Order, error) {
 	if f.GetAllOrdersFunc != nil {
 		return f.GetAllOrdersFunc(ctx)
 	}
@@ -58,10 +60,15 @@ func TestProcessKafkaMessage_OK(t *testing.T) {
 			return nil, nil
 		},
 	}
+	cacheTest, err := lru.New(1000)
+	if err != nil {
+		log.Printf("Failed to create lru-test-cache: %v", err)
+	}
 	mapa := cache.OrderMap{
-		CacheMap: make(map[string]model.Order),
+		CacheMap: cacheTest,
 		Repo:     repo,
 	}
+
 	svc := NewOrderService(repo, &mapa)
 	msg := kafka.Message{
 		Value: []byte(`{"order_uid":"u1","track_number":"T","entry":"WBIL","delivery":{"name":"A","phone":"1","zip":"1","city":"C","address":"A","region":"R","email":"e@e"},"payment":{"transaction":"u1","request_id":"","currency":"USD","provider":"p","amount":1,"payment_dt":1637907727,"bank":"b","delivery_cost":1,"goods_total":1,"custom_fee":500},"items":[{"chrt_id":1,"track_number":"T","price":1,"rid":"r","name":"n","sale":0,"size":"s","total_price":1,"nm_id":1,"brand":"b","status":1}],"locale":"en","internal_signature":"","customer_id":"c","delivery_service":"d","shardkey":"1","sm_id":1,"date_created":"2021-11-26T06:22:19Z","oof_shard":"1"}`),
@@ -72,11 +79,11 @@ func TestProcessKafkaMessage_OK(t *testing.T) {
 	rawTestOrder, _ := json.Marshal(testOrder)
 
 	svc.AddNewOrder(&msg)
-	svcOrder, ok := mapa.CacheMap["u1"]
+	cached, ok := mapa.CacheMap.Get("u1")
 	if !ok {
 		t.Fatalf("expected order created and in cache")
 	}
-
+	svcOrder := cached.(model.Order)
 	rawSvcOrder, _ := json.Marshal(svcOrder)
 	if string(rawTestOrder) != string(rawSvcOrder) {
 		fmt.Println("Original json:", string(rawTestOrder))

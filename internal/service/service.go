@@ -54,9 +54,8 @@ func (OS *orderService) AddNewOrder(msg *kafka.Message) {
 	}
 
 	//Проверка на существование в кеше
-	OS.Map.RLock()
-	_, exists := OS.Map.CacheMap[order.OrderUID]
-	OS.Map.RUnlock()
+	_, exists := OS.Map.CacheMap.Get(order.OrderUID)
+
 	if exists {
 		log.Printf("Заказ с номером '%s' уже существует!", order.OrderUID)
 		return
@@ -72,10 +71,8 @@ func (OS *orderService) AddNewOrder(msg *kafka.Message) {
 		log.Printf("Failed to save order %s to DB: %v", order.OrderUID, err)
 		return
 	}
-	// Обновление кеша - можно вынести в отдельную функцию
-	OS.Map.Lock()
-	OS.Map.CacheMap[order.OrderUID] = order
-	OS.Map.Unlock()
+	// Обновление кеша
+	OS.Map.CacheMap.Add(order.OrderUID, order)
 
 	log.Printf("Order '%s' created and cached", order.OrderUID)
 }
@@ -83,11 +80,8 @@ func (OS *orderService) AddNewOrder(msg *kafka.Message) {
 // GetOrderInfo used only for API-calls, returns model.Order by its uuid from DB if there is any, or nil and error
 func (OS *orderService) GetOrderInfo(ctx context.Context, uid string) (*model.Order, error) {
 	//Проверяем сначала кэш
-	OS.Map.RLock()
-	order, ok := OS.Map.CacheMap[uid]
-	OS.Map.RUnlock()
-
-	if ok {
+	if cached, ok := OS.Map.CacheMap.Get(uid); ok {
+		order := cached.(model.Order)
 		return &order, nil
 	}
 
@@ -95,9 +89,7 @@ func (OS *orderService) GetOrderInfo(ctx context.Context, uid string) (*model.Or
 	orderFromDB, err := OS.Repo.GetOrderByUID(ctx, uid)
 	if err == nil {
 		// Обновление кеша
-		OS.Map.Lock()
-		OS.Map.CacheMap[uid] = *orderFromDB
-		OS.Map.Unlock()
+		OS.Map.CacheMap.Add(uid, orderFromDB)
 		return orderFromDB, nil
 	}
 

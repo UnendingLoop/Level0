@@ -35,10 +35,15 @@ func EmulateMsgSending(broker, topic string) {
 		err = writer.WriteMessages(context.Background(), kafka.Message{
 			Value: line,
 		})
-		if err != nil {
+		for err != nil {
 			log.Printf("Failed to publish test order #%d: %v", counter, err)
-			continue
+			log.Printf("Retrying to send order #%d...", counter)
+			time.Sleep(5 * time.Second)
+			err = writer.WriteMessages(context.Background(), kafka.Message{
+				Value: line,
+			})
 		}
+
 		log.Printf("Order #%d published to Kafka", counter)
 	}
 
@@ -54,6 +59,5 @@ func WaitKafkaReady(broker string) {
 		log.Println("Kafka not ready, retrying in 5s...")
 		time.Sleep(5 * time.Second)
 	}
-	time.Sleep(20 * time.Second)
-
+	time.Sleep(25 * time.Second)
 }

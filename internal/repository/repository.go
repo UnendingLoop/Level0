@@ -18,7 +18,7 @@ type OrderRepository interface {
 	AddNewOrder(ctx context.Context, neworder *model.Order) error
 	GetOrderByUID(ctx context.Context, uid string) (*model.Order, error)
 	PushOrderToRawTable(ctx context.Context, brokenOrder model.InvalidRequest) error
-	GetAllOrders(ctx context.Context) ([]model.Order, error)
+	GetAllOrders(ctx context.Context, count int) ([]model.Order, error)
 }
 
 type orderRepository struct {
@@ -120,12 +120,12 @@ func (OR *orderRepository) AddNewOrder(ctx context.Context, neworder *model.Orde
 	return nil
 }
 
-// GetAllOrders retreives existing orders from DB with limit=1000, used for warming up cache at app launch
-func (OR *orderRepository) GetAllOrders(ctx context.Context) ([]model.Order, error) {
+// GetAllOrders retreives existing orders from DB with limit=count, used for warming up cache at app launch
+func (OR *orderRepository) GetAllOrders(ctx context.Context, count int) ([]model.Order, error) {
 	var orders []model.Order
 
 	for range 3 { //ограничимся тройным циклом вместо рекурсивного вызова всей GetAllOrders
-		err := OR.DB.WithContext(ctx).Preload("Delivery").Preload("Payment").Preload("Items").Order("date_created DESC").Limit(1000).Find(&orders).Error
+		err := OR.DB.WithContext(ctx).Preload("Delivery").Preload("Payment").Preload("Items").Order("date_created DESC").Limit(count).Find(&orders).Error
 		if err == nil { //если успешно - сразу выходим из цикла и функции
 			return orders, nil
 		}
