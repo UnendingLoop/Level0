@@ -1,33 +1,36 @@
+// Package repository - a layer of main application which interacts with DB using gorm-requests
 package repository
 
 import (
 	"context"
 	"fmt"
 	"log"
-	"orderservice/internal/model"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"orderservice/internal/model"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
+// OrderRepository -
 type OrderRepository interface {
 	AddNewOrder(ctx context.Context, neworder *model.Order) error
 	GetOrderByUID(ctx context.Context, uid string) (*model.Order, error)
-	PushOrderToRawTable(ctx context.Context, brokenOrder model.InvalidRequest) error
 	GetAllOrders(ctx context.Context, count int) ([]model.Order, error)
 }
 
 type orderRepository struct {
 	DB           *gorm.DB
-	dsn          string      //для переподключения если отвалилась база
-	reconnecting atomic.Bool //флаг запущенного переподключения к БД
-	sync.Mutex               //для предотвращения множественного вызова connectWithRetry из других экземпляров хендлеров при отвале БД
+	dsn          string      // для переподключения если отвалилась база
+	reconnecting atomic.Bool // флаг запущенного переподключения к БД
+	sync.Mutex               // для предотвращения множественного вызова connectWithRetry из других экземпляров хендлеров при отвале БД
 }
 
+// NewOrderRepository -
 func NewOrderRepository(db *gorm.DB, dsnDB string) OrderRepository {
 	return &orderRepository{DB: db, dsn: dsnDB}
 }
@@ -35,19 +38,19 @@ func NewOrderRepository(db *gorm.DB, dsnDB string) OrderRepository {
 // GetOrderByUID finds order by its UUID and provides it with error message(if any)
 func (OR *orderRepository) GetOrderByUID(ctx context.Context, uid string) (*model.Order, error) {
 	var order model.Order
-	for range 3 { //ограничимся тройным циклом вместо рекурсивного вызова всей AddNewOrder
+	for range 3 { // ограничимся тройным циклом вместо рекурсивного вызова всей AddNewOrder
 		err := OR.DB.WithContext(ctx).Preload("Delivery").Preload("Payment").Preload("Items").Where("order_uid = ?", uid).First(&order).Error
-		if err == nil { //если успешно - сразу выходим из цикла и функции
+		if err == nil { // если успешно - сразу выходим из цикла и функции
 			return &order, nil
 		}
 
 		if isConnectionError(err) {
 			switch OR.reconnecting.Load() {
-			case true: //если ошибка соединения и уже запущено переподключение - ждем и пробуем снова
+			case true: // если ошибка соединения и уже запущено переподключение - ждем и пробуем снова
 				time.Sleep(15 * time.Second)
 				continue
 			case false:
-				if conErr := OR.connectWithRetry(); conErr != nil { //если не получилось восстановить соединение с одной попытки - выход из функции
+				if conErr := OR.connectWithRetry(); conErr != nil { // если не получилось восстановить соединение с одной попытки - выход из функции
 					return nil, conErr
 				}
 				continue
@@ -133,19 +136,19 @@ func (OR *orderRepository) AddNewOrder(ctx context.Context, neworder *model.Orde
 func (OR *orderRepository) GetAllOrders(ctx context.Context, count int) ([]model.Order, error) {
 	var orders []model.Order
 
-	for range 3 { //ограничимся тройным циклом вместо рекурсивного вызова всей GetAllOrders
+	for range 3 { // ограничимся тройным циклом вместо рекурсивного вызова всей GetAllOrders
 		err := OR.DB.WithContext(ctx).Preload("Delivery").Preload("Payment").Preload("Items").Order("date_created DESC").Limit(count).Find(&orders).Error
-		if err == nil { //если успешно - сразу выходим из цикла и функции
+		if err == nil { // если успешно - сразу выходим из цикла и функции
 			return orders, nil
 		}
 
 		if isConnectionError(err) {
 			switch OR.reconnecting.Load() {
-			case true: //если ошибка соединения и уже запущено переподключение - ждем и пробуем снова
+			case true: // если ошибка соединения и уже запущено переподключение - ждем и пробуем снова
 				time.Sleep(15 * time.Second)
 				continue
 			case false:
-				if conErr := OR.connectWithRetry(); conErr != nil { //если не получилось восстановить соединение с одной попытки - выход из функции
+				if conErr := OR.connectWithRetry(); conErr != nil { // если не получилось восстановить соединение с одной попытки - выход из функции
 					return nil, conErr
 				}
 				continue
@@ -154,31 +157,6 @@ func (OR *orderRepository) GetAllOrders(ctx context.Context, count int) ([]model
 		return nil, err
 	}
 	return orders, nil
-}
-
-// PushOrderToRawTable adds invalid JSONs into separate table for further investigation
-func (OR *orderRepository) PushOrderToRawTable(ctx context.Context, brokenOrder model.InvalidRequest) error {
-	brokenOrder.ID = nil
-	for range 3 { //ограничимся тройным циклом вместо рекурсивного вызова всей PushOrderToRawTable
-		err := OR.DB.Create(&brokenOrder).Error
-		if err == nil { //если успешно - сразу выходим из цикла и функции
-			return nil
-		}
-		if isConnectionError(err) {
-			switch OR.reconnecting.Load() {
-			case true: //если ошибка соединения и уже запущено переподключение - ждем и пробуем снова
-				time.Sleep(15 * time.Second)
-				continue
-			case false:
-				if conErr := OR.connectWithRetry(); conErr != nil { //если не получилось восстановить соединение с одной попытки - выход из функции
-					return conErr
-				}
-				continue
-			}
-		}
-		return err
-	}
-	return nil
 }
 
 func (OR *orderRepository) connectWithRetry() error {
@@ -203,18 +181,18 @@ func (OR *orderRepository) connectWithRetry() error {
 		db, err = gorm.Open(postgres.Open(OR.dsn), &gorm.Config{})
 		if err == nil {
 			sqlDB, _ := db.DB()
-			if pingErr := sqlDB.Ping(); pingErr == nil {
+			pingErr := sqlDB.Ping()
+			if pingErr == nil {
 				OR.DB = db
 				log.Println("Successfully reconnected!")
 				return nil
-			} else {
-				err = pingErr
 			}
+			err = pingErr
 		}
 		time.Sleep(delay)
 	}
 
-	return fmt.Errorf("Could not reconnect after %d retries: %w", maxRetries, err)
+	return fmt.Errorf("could not reconnect after %d retries: %w", maxRetries, err)
 }
 
 func isConnectionError(err error) bool {

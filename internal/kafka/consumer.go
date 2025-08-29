@@ -3,8 +3,12 @@ package kafka
 import (
 	"context"
 	"log"
-	"orderservice/internal/service"
 	"sync"
+	"time"
+
+	"orderservice/internal/service"
+
+	"github.com/segmentio/kafka-go"
 )
 
 // StartConsumer initializes listening to Kafka messages, which will be forwarded to Service-layer
@@ -26,6 +30,18 @@ func StartConsumer(ctx context.Context, srv service.OrderService, broker, topic 
 			srv.AddNewOrder(&msg)
 			reader.CommitMessages(ctx, msg)
 		}
-
 	}
+}
+
+// NewKafkaReader -
+func NewKafkaReader(broker, topic string) *kafka.Reader {
+	return kafka.NewReader(kafka.ReaderConfig{
+		Brokers:     []string{broker},
+		Topic:       topic,
+		GroupID:     "order-service",
+		MinBytes:    10e3,
+		MaxBytes:    10e6,
+		StartOffset: kafka.FirstOffset,
+		MaxWait:     1 * time.Second,
+	})
 }

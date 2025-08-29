@@ -1,3 +1,4 @@
+// Package service - layer with business-logics
 package service
 
 import (
@@ -5,10 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"time"
+
 	"orderservice/internal/cache"
 	"orderservice/internal/model"
 	"orderservice/internal/repository"
-	"time"
 
 	"github.com/segmentio/kafka-go"
 	"gorm.io/gorm"
@@ -21,46 +23,51 @@ type OrderService interface {
 
 // OrderService provides access to repo - DB operations, and contains a Map - cached orders
 type orderService struct {
-	Repo repository.OrderRepository
-	Map  *cache.OrderMap
+	Repo      repository.OrderRepository
+	Map       *cache.OrderMap
+	DLQwriter *kafka.Writer
 }
 
 var (
-	ErrRecordNotFound = errors.New("Запрошенный номер заказа не найдет в базе!")
-	ErrJSONDecode     = errors.New("Ошибка декодирования JSON-сообщения: ")
-	ErrIncompleteJson = errors.New("Json содержит неполные данные")
+	ErrRecordNotFound = errors.New("запрошенный номер заказа не найден в базе")
+	ErrJSONDecode     = errors.New("ошибка декодирования JSON-сообщения: ")
+	ErrIncompleteJSON = errors.New("JSON содержит неполные данные")
 )
 
 // NewOrderService - returns *orderService
-func NewOrderService(repo repository.OrderRepository, mapa *cache.OrderMap) OrderService {
-	return &orderService{Repo: repo, Map: mapa}
+func NewOrderService(repo repository.OrderRepository, mapa *cache.OrderMap, broker, topic string) OrderService {
+	dlqWriter := kafka.Writer{
+		Addr:  kafka.TCP(broker),
+		Topic: topic,
+	}
+	return &orderService{Repo: repo, Map: mapa, DLQwriter: &dlqWriter}
 }
 
 // AddNewOrder receives rawJson from Kafka consumer and creates new order in DB if rawJSON is valid, otherwise adds broken JSON into table InvalidRequests
 func (OS *orderService) AddNewOrder(msg *kafka.Message) {
 	var order model.Order
-	//Обработка ошибки декодирования
+	// Обработка ошибки декодирования
 	if err := json.Unmarshal(msg.Value, &order); err != nil {
 		log.Printf(ErrJSONDecode.Error(), err)
-		OS.pushToInvalidRequests(msg.Value, ErrJSONDecode)
+		OS.pushToDLQ(msg.Value)
 		return
 	}
 
-	//Обработка ошибок валидации данных
+	// Обработка ошибок валидации данных
 	if !isValidOrderJSON(&order) {
 		log.Println("JSON is incomplete")
-		OS.pushToInvalidRequests(msg.Value, ErrJSONDecode)
+		OS.pushToDLQ(msg.Value)
 		return
 	}
 
-	//Проверка на существование в кеше
+	// Проверка на существование в кеше
 	_, exists := OS.Map.CacheMap.Get(order.OrderUID)
 
 	if exists {
 		log.Printf("Заказ с номером '%s' уже существует!", order.OrderUID)
 		return
 	}
-	//Проверка на существование в БД
+	// Проверка на существование в БД
 	if _, err := OS.GetOrderInfo(context.Background(), order.OrderUID); err == nil {
 		log.Printf("Заказ с номером '%s' уже существует!", order.OrderUID)
 		return
@@ -79,7 +86,7 @@ func (OS *orderService) AddNewOrder(msg *kafka.Message) {
 
 // GetOrderInfo used only for API-calls, returns model.Order by its uuid from DB if there is any, or nil and error
 func (OS *orderService) GetOrderInfo(ctx context.Context, uid string) (*model.Order, error) {
-	//Проверяем сначала кэш
+	// Проверяем сначала кэш
 	if cached, ok := OS.Map.CacheMap.Get(uid); ok {
 		order := cached.(model.Order)
 		return &order, nil
@@ -93,24 +100,25 @@ func (OS *orderService) GetOrderInfo(ctx context.Context, uid string) (*model.Or
 		return orderFromDB, nil
 	}
 
-	//Получили ошибку из бд
+	// Получили ошибку из бд
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrRecordNotFound
 	}
 	return nil, err
 }
 
-func (OS *orderService) pushToInvalidRequests(brokenJSON []byte, origErr error) {
-	if err := OS.Repo.PushOrderToRawTable(context.Background(), model.InvalidRequest{
-		ReceivedAt:   time.Now(),
-		RawJSON:      string(brokenJSON),
-		ErrorMessage: origErr.Error(),
-		Status:       "New", //потом можно вынести в отдельный тип
-	}); err != nil {
-		log.Printf("Failed to safe order to table InvalidRequests: %v", err)
-		return
+func (OS *orderService) pushToDLQ(brokenJSON []byte) {
+	err := OS.DLQwriter.WriteMessages(context.Background(), kafka.Message{
+		Value: brokenJSON,
+	})
+	for err != nil {
+		log.Printf("Failed to write to DLQtopic: %v\nRetrying...", err)
+		time.Sleep(5 * time.Second)
+		err = OS.DLQwriter.WriteMessages(context.Background(), kafka.Message{
+			Value: brokenJSON,
+		})
 	}
-	log.Printf("Invalid JSON saved to InvalidRequests.")
+	log.Printf("Invalid JSON successfully sent to DLQ.")
 }
 
 func isValidOrderJSON(order *model.Order) bool {
@@ -168,6 +176,5 @@ func isValidOrderJSON(order *model.Order) bool {
 			return false
 		}
 	}
-
 	return true
 }

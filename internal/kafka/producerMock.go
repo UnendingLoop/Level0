@@ -3,22 +3,24 @@ package kafka
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"time"
 
+	"orderservice/internal/mocks"
+
 	"github.com/segmentio/kafka-go"
 )
 
-// EmulateMsgSending used to emulate real messages flow to test the app in real-time with real DB; mock json-data is read from file
+// EmulateMsgSending used to emulate real messages flow to test the app in real-time with real DB;
+// mock json-data is read from file and generated using faker-package
 func EmulateMsgSending(broker, topic string) {
-	writer := kafka.NewWriter(kafka.WriterConfig{
-		Brokers:      []string{broker},
-		Topic:        topic,
-		Balancer:     &kafka.LeastBytes{},
-		RequiredAcks: int(kafka.RequireOne),
-		Async:        false,
-	})
+	mockWriter := kafka.Writer{
+		Addr:  kafka.TCP(broker),
+		Topic: topic,
+	}
 
 	file, err := os.Open("./internal/kafka/mocks.json")
 	if err != nil {
@@ -32,14 +34,14 @@ func EmulateMsgSending(broker, topic string) {
 		time.Sleep(1 * time.Second)
 		counter++
 		line := scanner.Bytes()
-		err = writer.WriteMessages(context.Background(), kafka.Message{
+		err = mockWriter.WriteMessages(context.Background(), kafka.Message{
 			Value: line,
 		})
 		for err != nil {
 			log.Printf("Failed to publish test order #%d: %v", counter, err)
 			log.Printf("Retrying to send order #%d...", counter)
 			time.Sleep(5 * time.Second)
-			err = writer.WriteMessages(context.Background(), kafka.Message{
+			err = mockWriter.WriteMessages(context.Background(), kafka.Message{
 				Value: line,
 			})
 		}
@@ -47,8 +49,33 @@ func EmulateMsgSending(broker, topic string) {
 		log.Printf("Order #%d published to Kafka", counter)
 	}
 
+	fmt.Println("\nInitiating fake orders generation...")
+	for i := range 10 {
+		order, err := json.Marshal(mocks.GenerateMockOrder())
+		if err != nil {
+			log.Printf("Fake order marshalling #%d failed: %v", i, err)
+			continue
+		}
+		log.Printf("Fake order #%d JSON:\n%s\n", i, string(order))
+
+		err = mockWriter.WriteMessages(context.Background(), kafka.Message{
+			Value: order,
+		})
+		for err != nil {
+			log.Printf("Failed to publish fake order #%d: %v", i, err)
+			log.Printf("Retrying to send fake order #%d...", i)
+			time.Sleep(5 * time.Second)
+			err = mockWriter.WriteMessages(context.Background(), kafka.Message{
+				Value: order,
+			})
+		}
+
+		log.Printf("Fake order #%d published to Kafka\n", i)
+		time.Sleep(2 * time.Second)
+	}
 }
 
+// WaitKafkaReady - timeout given to kafka-service for getting fully functional
 func WaitKafkaReady(broker string) {
 	for {
 		conn, err := kafka.Dial("tcp", broker)

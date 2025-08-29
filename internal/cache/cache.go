@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"log"
+
 	"orderservice/internal/repository"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -15,14 +16,14 @@ type OrderMap struct {
 }
 
 // CreateAndWarmUpOrderCache returns a new map with warmed up cache, access to DB and embedded mutex
-func CreateAndWarmUpOrderCache(repo repository.OrderRepository) (*OrderMap, error) {
-	cache, err := lru.New(1000)
+func CreateAndWarmUpOrderCache(repo repository.OrderRepository, size int) (*OrderMap, error) {
+	cache, err := lru.New(size)
 	if err != nil {
 		log.Printf("Failed to create lru-cache: %v", err)
 		return nil, err
 	}
 	orderMap := OrderMap{Repo: repo}
-	orders, err := orderMap.Repo.GetAllOrders(context.Background(), 1000)
+	orders, err := orderMap.Repo.GetAllOrders(context.Background(), size)
 	if err != nil {
 		log.Printf("Failed to read orders from DB to warm up cahce: %v", err)
 		return nil, err

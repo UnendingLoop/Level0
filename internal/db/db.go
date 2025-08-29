@@ -1,19 +1,20 @@
+// Package db - provides connection to database and AutoMigrate data model(if necessary) through gorm
 package db
 
 import (
 	"log"
+
 	"orderservice/internal/model"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-var models = []any{ //the order of tables is important
+var models = []any{ // the order of tables is important
 	&model.Order{},
 	&model.Delivery{},
 	&model.Payment{},
 	&model.Item{},
-	&model.InvalidRequest{},
 }
 
 // ConnectPostgres creates connection to Postres and runs automigration using structs from order.go

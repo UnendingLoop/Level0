@@ -1,16 +1,18 @@
+// Package handler -
 package handler
 
 import (
 	"context"
 	"errors"
 	"net/http"
+
 	"orderservice/internal/service"
 	"orderservice/internal/web"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// OrderHandler provides access to Service layer
+// OrderHandler provides method for getting order info through Service layer
 type OrderHandler struct {
 	Service service.OrderService
 }

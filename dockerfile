@@ -20,7 +20,6 @@ WORKDIR /app
 
 COPY --from=builder /app/orderservice .
 
-# если нужны .env или миграции — тоже копируй сюда
 COPY .env .env
 COPY internal/web /app/internal/web
 COPY internal/kafka/ /app/internal/kafka
