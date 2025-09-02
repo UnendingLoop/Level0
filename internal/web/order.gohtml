@@ -29,10 +29,11 @@
 	<h3>Payment</h3>
 	<table class="table table-bordered">
 		<tr><th>Transaction</th><td>{{.Payment.Transaction}}</td></tr>
-		<tr><th>Amount</th><td>{{.Payment.Amount}} {{.Payment.Currency}}</td></tr>
 		<tr><th>Bank</th><td>{{.Payment.Bank}}</td></tr>
-		<tr><th>Delivery Cost</th><td>{{.Payment.DeliveryCost}}</td></tr>
-		<tr><th>Goods Total</th><td>{{.Payment.GoodsTotal}}</td></tr>
+		<tr><th>Custom fee</th><td>{{.Payment.CustomFee}} {{.Payment.Currency}}</td></tr>
+		<tr><th>Delivery Cost</th><td>{{.Payment.DeliveryCost}} {{.Payment.Currency}}</td></tr>
+		<tr><th>Goods Total</th><td>{{.Payment.GoodsTotal}} {{.Payment.Currency}}</td></tr>
+		<tr><th>Total payment amount</th><td>{{.Payment.Amount}} {{.Payment.Currency}}</td></tr>
 	</table>
 
 	<h3>Items</h3>
