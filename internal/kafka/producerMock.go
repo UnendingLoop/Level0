@@ -22,7 +22,8 @@ func EmulateMsgSending(broker, topic string) {
 		Topic: topic,
 	}
 
-	file, err := os.Open("./internal/kafka/mocks.json")
+	// чтение заказов из json-файла - 5 валидных, 2 дубликата и 3 невалидных
+	file, err := os.Open("./internal/kafka/mocks.jsonl")
 	if err != nil {
 		log.Fatalf("Failed to open json-mocks file: %v\nExiting application.", err)
 	}
@@ -49,6 +50,7 @@ func EmulateMsgSending(broker, topic string) {
 		log.Printf("Order #%d published to Kafka", counter)
 	}
 
+	// начинаем генерацию 10 заказов через Faker
 	fmt.Println("\nInitiating fake orders generation...")
 	for i := range 10 {
 		order, err := json.Marshal(mocks.GenerateMockOrder())
@@ -56,7 +58,6 @@ func EmulateMsgSending(broker, topic string) {
 			log.Printf("Fake order marshalling #%d failed: %v", i, err)
 			continue
 		}
-		log.Printf("Fake order #%d JSON:\n%s\n", i, string(order))
 
 		err = mockWriter.WriteMessages(context.Background(), kafka.Message{
 			Value: order,

@@ -12,6 +12,7 @@ import (
 	"github.com/go-faker/faker/v4"
 )
 
+// инициализируем кастомный тег "number"
 func init() {
 	faker.AddProvider("number", func(v reflect.Value) (interface{}, error) {
 		number, _ := faker.RandomInt(300, 700)
@@ -50,7 +51,7 @@ func conformOrderUID(order *model.Order) {
 func conformItems(items []model.Item) {
 	for i := range items {
 		items[i].Sale = 20
-		items[i].TotalPrice = items[i].Price * (100 - items[i].Sale)
+		items[i].TotalPrice = items[i].Price * (100 - items[i].Sale) / 100
 	}
 }
 

@@ -115,6 +115,7 @@ func main() {
 		defer httpCancel()
 		if err := srv.Shutdown(ctx); err != nil {
 			log.Printf("Server shutdown error: %v", err)
+			return
 		}
 		log.Println("HTTP server stopped")
 	}()

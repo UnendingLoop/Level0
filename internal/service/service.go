@@ -12,6 +12,7 @@ import (
 	"orderservice/internal/model"
 	"orderservice/internal/repository"
 
+	"github.com/go-playground/validator"
 	"github.com/segmentio/kafka-go"
 	"gorm.io/gorm"
 )
@@ -54,8 +55,13 @@ func (OS *orderService) AddNewOrder(msg *kafka.Message) {
 	}
 
 	// Обработка ошибок валидации данных
-	if !isValidOrderJSON(&order) {
-		log.Println("JSON is incomplete")
+	validateOrder := validator.New()
+
+	err := validateOrder.Struct(order)
+	if err != nil {
+		for _, e := range err.(validator.ValidationErrors) {
+			log.Printf("Order UID '%v': Поле '%s' не прошло проверку: %s\n", order.OrderUID, e.Field(), e.Tag())
+		}
 		OS.pushToDLQ(msg.Value)
 		return
 	}
@@ -121,6 +127,7 @@ func (OS *orderService) pushToDLQ(brokenJSON []byte) {
 	log.Printf("Invalid JSON successfully sent to DLQ.")
 }
 
+/*
 func isValidOrderJSON(order *model.Order) bool {
 	// Проверяем top-level поля Order
 	if order.OrderUID == "" ||
@@ -178,3 +185,4 @@ func isValidOrderJSON(order *model.Order) bool {
 	}
 	return true
 }
+*/
