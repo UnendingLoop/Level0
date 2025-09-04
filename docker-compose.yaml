@@ -22,6 +22,11 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "echo ruok | nc -w 5 localhost 2181 | grep imok" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "2181:2181"
     depends_on:
