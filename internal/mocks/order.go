@@ -14,10 +14,13 @@ import (
 
 // инициализируем кастомный тег "number"
 func init() {
-	faker.AddProvider("number", func(v reflect.Value) (interface{}, error) {
+	err := faker.AddProvider("number", func(v reflect.Value) (interface{}, error) {
 		number, _ := faker.RandomInt(300, 700)
 		return uint(number[0]), nil
 	})
+	if err != nil {
+		log.Fatal("Failed to initialize custom tag 'number' for faker:", err)
+	}
 }
 
 // GenerateMockOrder - generates valid mock orders(one order per call) on the spot.

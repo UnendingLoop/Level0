@@ -29,7 +29,11 @@ func InitKafkaTopics(broker, topic, topicDLQ string) {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		defer conn.Close()
+		defer func() {
+			if err := conn.Close(); err != nil {
+				log.Println("Failed to close reader connection to Kafka:", err)
+			}
+		}()
 
 		if err := conn.CreateTopics(topics...); err != nil {
 			log.Println("Failed to create topics:", err)

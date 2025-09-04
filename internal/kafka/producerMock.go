@@ -27,7 +27,11 @@ func EmulateMsgSending(broker, topic string) {
 	if err != nil {
 		log.Fatalf("Failed to open json-mocks file: %v\nExiting application.", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Println("Failed to close mock-file:", err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	counter := 0
@@ -81,7 +85,9 @@ func WaitKafkaReady(broker string) {
 	for {
 		conn, err := kafka.Dial("tcp", broker)
 		if err == nil {
-			conn.Close()
+			if errConn := conn.Close(); errConn != nil {
+				log.Println("Failed to close connection after testing Kafka readyness:", errConn)
+			}
 			break
 		}
 		log.Println("Kafka not ready, retrying in 5s...")

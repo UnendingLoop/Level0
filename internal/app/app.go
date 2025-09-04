@@ -45,7 +45,11 @@ func (a *App) Run() {
 	if err != nil {
 		log.Fatalf("Failed to retrieve sql.DB: %v", err)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			log.Println("Failed to close DB-connection:", err)
+		}
+	}()
 
 	// создаем экземпляр repository и прогреваем кэш
 	repo := repository.NewOrderRepository(db, a.cfg.DSN)

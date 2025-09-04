@@ -15,8 +15,11 @@ import (
 func StartConsumer(ctx context.Context, srv service.OrderService, broker, topic string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	reader := NewKafkaReader(broker, topic)
-	defer reader.Close()
-
+	defer func() {
+		if err := reader.Close(); err != nil {
+			log.Println("Failed to close Kafa-reader:", err)
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -28,7 +31,9 @@ func StartConsumer(ctx context.Context, srv service.OrderService, broker, topic 
 				continue
 			}
 			srv.AddNewOrder(&msg)
-			reader.CommitMessages(ctx, msg)
+			if err := reader.CommitMessages(ctx, msg); err != nil {
+				log.Println("Failed to commit kafka-message:", err)
+			}
 		}
 	}
 }
