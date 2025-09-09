@@ -39,10 +39,15 @@ func GetConfig() Config {
 		log.Println("Warning while loading .env:", err)
 	}
 
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		log.Fatal("DATABASE_URL is not set in env")
+	dbUser := os.Getenv("POSTGRES_USER")
+	dbName := os.Getenv("POSTGRES_DB")
+	dbPass := os.Getenv("POSTGRES_PASSWORD")
+	dbContName := os.Getenv("DB_CONTAINER_NAME")
+
+	if dbUser == "" || dbName == "" || dbPass == "" || dbContName == "" {
+		log.Fatal("DB connection credentials, db name or DB container name are not set in env")
 	}
+	dsn := "postgresql://" + dbUser + ":" + dbPass + "@" + dbContName + ":5432/" + dbName + "?sslmode=disable"
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {
